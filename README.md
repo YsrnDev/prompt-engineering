@@ -1,61 +1,135 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Prompt Engineer Generator
 
-# Run and deploy your AI Studio app
+Prompt generator berbasis React + Vite untuk mengubah instruksi sederhana menjadi prompt yang lebih detail, terstruktur, dan siap dipakai di AI agent lain (Gemini, Claude Code, Kiro, Kimi, dll).
 
-This contains everything you need to run your app locally.
+## Fitur Utama
 
-View your app in AI Studio: https://ai.studio/apps/drive/1wDoF0Bv8pygW65X1noQQJ76kQxywN6oy
+- OpenAI-compatible API only (melalui proxy server lokal `/api/generate`).
+- Mode generasi prompt: `Simple`, `Advanced`, `Expert`.
+- Target agent profile: `Universal`, `Gemini`, `Claude Code`, `Kiro`, `Kimi`.
+- Skills integration (opsional) dari `skills.sh`.
+- UI chat responsif mobile/desktop.
+- PWA support (installable di Android pada mode production + HTTPS).
 
-## Run Locally
+## Tech Stack
 
-**Prerequisites:**  Node.js
+- React 19
+- Vite 6
+- TypeScript
+- Tailwind CSS 4
+- Playwright (E2E)
 
+## Prasyarat
 
-1. Install dependencies:
-   `npm install`
-2. Configure OpenAI-compatible env in [.env.local](.env.local):
-   - set `OPENAI_COMPATIBLE_URL` (or `OPENAI_COMPATIBLE_BASE_URL`, root URL or full `/v1/chat/completions`)
-   - set `OPENAI_COMPATIBLE_MODEL`
-   - set `OPENAI_COMPATIBLE_API_KEY` if your endpoint requires auth
-   - optional UI flag: set `VITE_ENABLE_SIDEBAR=true` to show sidebar navigation (default hidden)
-   - optional skills integration refs:
-     - `SKILLS_SH_PROMPT_ENGINEERING_PATTERN_REF`
-     - `SKILLS_SH_UI_UX_PRO_MAX_REF`
-     - `SKILLS_SH_DISABLE=true` to disable loading external skills
-3. Run the app:
-   `npm run dev`
+- Node.js 18+ (disarankan versi LTS terbaru)
+- npm
 
-## Notes
+## Setup Lokal
 
-- Requests are proxied through a local server endpoint (`/api/generate`) managed by Vite middleware.
-- The API key stays server-side and is not injected into the browser bundle.
-- Skills integration status can be checked via `GET /api/skills-status`.
-- Provider:
-  - OpenAI-compatible endpoint URL
-- Prompt generator modes:
-  - `Simple` for fast, lightweight prompt outputs
-  - `Advanced` for balanced structure and rationale (default)
-  - `Expert` for deeper optimization and stricter prompt engineering constraints
-- Target agent profiles:
-  - `Universal` (portable)
-  - `Gemini`
-  - `Claude Code`
-  - `Kiro`
-  - `Kimi`
-- Quality checks:
-  - `npm run lint` for TypeScript type checks
-  - `npm run test` for core chat logic tests
-  - `npm run test:e2e` for Playwright responsive E2E (mobile/tablet/desktop)
-  - `npm run test:e2e:headed` to run E2E tests in headed mode
-  - `npm run test:e2e:report` to open the latest Playwright HTML report
+1. Install dependency:
 
-## Playwright E2E
+```bash
+npm install
+```
 
-1. Install browser binaries once:
-   `npx playwright install chromium`
-2. Run responsive E2E suite:
-   `npm run test:e2e`
+2. Buat/isi file `.env.local`:
 
-The suite runs the same functional checks against these viewports: `mobile-small`, `mobile-large`, `tablet`, `desktop`, and `desktop-wide`.
+```env
+# Wajib: pilih salah satu URL
+OPENAI_COMPATIBLE_URL=https://your-provider.com/v1/chat/completions
+# atau:
+# OPENAI_COMPATIBLE_BASE_URL=https://your-provider.com
+
+# Wajib
+OPENAI_COMPATIBLE_MODEL=gpt-4o-mini
+
+# Opsional (jika endpoint perlu auth bearer)
+OPENAI_COMPATIBLE_API_KEY=your_api_key
+
+# Opsional UI
+VITE_ENABLE_SIDEBAR=false
+
+# Opsional skills.sh
+SKILLS_SH_DISABLE=false
+SKILLS_SH_PROMPT_ENGINEERING_PATTERN_REF=prompt-engineering-patterns
+SKILLS_SH_UI_UX_PRO_MAX_REF=ui-ux-pro-max-skill
+```
+
+3. Jalankan dev server:
+
+```bash
+npm run dev
+```
+
+4. Buka:
+
+`http://localhost:3000`
+
+## API Lokal
+
+- `POST /api/generate`
+  - Proxy streaming ke OpenAI-compatible endpoint.
+- `GET /api/skills-status`
+  - Cek status skill yang berhasil dimuat.
+
+## PWA (Install di Android)
+
+PWA aktif di build production (service worker didaftarkan hanya saat `import.meta.env.PROD`).
+
+1. Build aplikasi:
+
+```bash
+npm run build
+```
+
+2. Serve hasil build via HTTPS (atau localhost).
+3. Buka di Chrome Android.
+4. Pilih menu `Install app` / `Add to Home screen`.
+
+File terkait PWA:
+
+- `public/manifest.webmanifest`
+- `public/sw.js`
+- `public/icons/*`
+
+## Scripts
+
+- `npm run dev` menjalankan Vite dev server.
+- `npm run build` build production.
+- `npm run preview` preview build.
+- `npm run lint` type check TypeScript.
+- `npm run test` unit test logic chat.
+- `npm run test:e2e` Playwright E2E.
+- `npm run test:e2e:headed` Playwright E2E mode headed.
+- `npm run test:e2e:report` buka report Playwright.
+
+## Testing E2E
+
+Install browser Playwright (sekali saja):
+
+```bash
+npx playwright install chromium
+```
+
+Jalankan E2E:
+
+```bash
+npm run test:e2e
+```
+
+## Struktur Folder
+
+```txt
+components/   UI components
+hooks/        React hooks
+lib/          Shared parsing/helper logic
+services/     Client-side API streaming handler
+server/       Vite middleware proxy + skills integration
+public/       Static assets + PWA files
+tests/        Unit dan E2E tests
+```
+
+## Catatan
+
+- API key tetap di sisi server (tidak diekspos ke browser).
+- Jika mengubah `public/sw.js` dan update tidak muncul, clear site data/service worker lalu reload.
