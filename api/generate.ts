@@ -2,9 +2,13 @@ import type { Message } from '../types.js';
 import { createSkillsIntegration } from '../server/skillsIntegration.js';
 import {
   applyCorsHeaders,
+  checkRateLimit,
   getAllowedCorsOrigins,
+  isAuthorizedRequest,
+  readPositiveIntegerEnv,
   readEnvValue,
   readJsonBody,
+  RequestBodyTooLargeError,
   sendJson,
   sendNdjson,
   setStreamHeaders,
@@ -20,6 +24,8 @@ type TargetAgent = 'universal' | 'gemini' | 'claude-code' | 'kiro' | 'kimi';
 const DEFAULT_PROMPT_MODE: PromptGenerationMode = 'advanced';
 const DEFAULT_TARGET_AGENT: TargetAgent = 'universal';
 const DEFAULT_OPENAI_COMPATIBLE_MODEL = 'gpt-4o-mini';
+const DEFAULT_OPENAI_TIMEOUT_MS = 45_000;
+const DEFAULT_MAX_BODY_BYTES = 1_000_000;
 const MAX_CONTEXT_MESSAGES = 20;
 
 const SYSTEM_INSTRUCTION = `You are "Prompt Architect AI", a world-class senior Prompt Engineer and LLM Optimization expert.
@@ -377,6 +383,11 @@ const streamFromOpenAICompatible = async (
   res: VercelLikeResponse
 ): Promise<void> => {
   const config = getOpenAICompatibleConfig(envSource);
+  const timeoutMs = readPositiveIntegerEnv(
+    envSource,
+    'OPENAI_COMPATIBLE_TIMEOUT_MS',
+    DEFAULT_OPENAI_TIMEOUT_MS
+  );
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -387,16 +398,31 @@ const streamFromOpenAICompatible = async (
     headers.Authorization = `Bearer ${config.apiKey}`;
   }
 
-  const response = await fetch(config.url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: config.model,
-      stream: true,
-      temperature: 0.7,
-      messages: toOpenAICompatibleMessages(contextMessages, systemInstruction),
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(config.url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: config.model,
+        stream: true,
+        temperature: 0.7,
+        messages: toOpenAICompatibleMessages(contextMessages, systemInstruction),
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') {
+      throw new Error(`Upstream request timed out after ${timeoutMs}ms.`);
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(await readErrorResponse(response));
@@ -469,8 +495,19 @@ const handleGenerate = async (
 
   let body: unknown;
   try {
-    body = await readJsonBody(req);
-  } catch {
+    body = await readJsonBody(req, {
+      maxBytes: readPositiveIntegerEnv(
+        ENV_SOURCE,
+        'GENERATE_MAX_BODY_BYTES',
+        DEFAULT_MAX_BODY_BYTES
+      ),
+    });
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      sendJson(res, error.statusCode, { error: error.message });
+      return;
+    }
+
     sendJson(res, 400, { error: 'Invalid JSON body.' });
     return;
   }
@@ -517,6 +554,28 @@ export default async function handler(
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
     res.end();
+    return;
+  }
+
+  if (!isAuthorizedRequest(req, ENV_SOURCE)) {
+    sendJson(res, 401, { error: 'Unauthorized request.' });
+    return;
+  }
+
+  const rateLimit = checkRateLimit(req, ENV_SOURCE, {
+    keyPrefix: 'generate',
+    maxRequestsEnvKey: 'GENERATE_RATE_LIMIT_MAX_REQUESTS',
+    windowMsEnvKey: 'GENERATE_RATE_LIMIT_WINDOW_MS',
+    defaultMaxRequests: 30,
+    defaultWindowMs: 60_000,
+  });
+  res.setHeader('X-RateLimit-Limit', String(rateLimit.limit));
+  res.setHeader('X-RateLimit-Remaining', String(rateLimit.remaining));
+  res.setHeader('Retry-After', String(rateLimit.retryAfterSeconds));
+  if (!rateLimit.allowed) {
+    sendJson(res, 429, {
+      error: 'Rate limit exceeded. Please retry later.',
+    });
     return;
   }
 

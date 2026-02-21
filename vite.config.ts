@@ -6,10 +6,11 @@ import { openAICompatibleProxyPlugin } from './server/openaiCompatibleProxyPlugi
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
+    const devHost = env.VITE_DEV_HOST || '127.0.0.1';
     return {
       server: {
         port: 3000,
-        host: '0.0.0.0',
+        host: devHost,
       },
       plugins: [tailwindcss(), react(), openAICompatibleProxyPlugin(env)],
       define: {

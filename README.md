@@ -53,6 +53,29 @@ VITE_ENABLE_SIDEBAR=false
 SKILLS_SH_DISABLE=false
 SKILLS_SH_PROMPT_ENGINEERING_PATTERN_REF=prompt-engineering-patterns
 SKILLS_SH_UI_UX_PRO_MAX_REF=ui-ux-pro-max-skill
+
+# Opsional security hardening backend
+# Jika diisi, client harus kirim token via header:
+# - Authorization: Bearer <token> atau
+# - X-Proxy-Auth: <token>
+API_PROXY_AUTH_TOKEN=
+
+# Batas body request /api/generate (bytes)
+GENERATE_MAX_BODY_BYTES=1000000
+
+# Timeout request ke provider OpenAI-compatible (ms)
+OPENAI_COMPATIBLE_TIMEOUT_MS=45000
+
+# Rate limit /api/generate
+GENERATE_RATE_LIMIT_MAX_REQUESTS=30
+GENERATE_RATE_LIMIT_WINDOW_MS=60000
+
+# Rate limit /api/skills-status
+SKILLS_STATUS_RATE_LIMIT_MAX_REQUESTS=60
+SKILLS_STATUS_RATE_LIMIT_WINDOW_MS=60000
+
+# Sembunyikan source/error skills dari endpoint publik (default aman: false)
+SKILLS_STATUS_INCLUDE_DETAILS=false
 ```
 
 3. Jalankan dev server:
@@ -70,7 +93,7 @@ npm run dev
 - `POST /api/generate`
   - Proxy streaming ke OpenAI-compatible endpoint.
 - `GET /api/skills-status`
-  - Cek status skill yang berhasil dimuat.
+  - Cek status skill yang berhasil dimuat (tanpa detail source/error kecuali `SKILLS_STATUS_INCLUDE_DETAILS=true`).
 
 ## PWA (Install di Android)
 

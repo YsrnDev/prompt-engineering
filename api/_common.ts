@@ -10,6 +10,24 @@ export type VercelLikeRequest = IncomingMessage & {
 export type VercelLikeResponse = ServerResponse;
 
 export const DEFAULT_ALLOWED_CORS_ORIGINS = ['https://prompt-arcgent.vercel.app'];
+const DEFAULT_MAX_BODY_BYTES = 1_000_000;
+const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 30;
+const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
+
+interface RateLimitEntry {
+  count: number;
+  resetAt: number;
+}
+
+export interface RateLimitCheckOptions {
+  keyPrefix: string;
+  maxRequestsEnvKey?: string;
+  windowMsEnvKey?: string;
+  defaultMaxRequests?: number;
+  defaultWindowMs?: number;
+}
+
+const rateLimitStore = new Map<string, RateLimitEntry>();
 
 export const toErrorMessage = (value: unknown): string => {
   if (value instanceof Error && value.message.trim()) {
@@ -30,6 +48,34 @@ export const readEnvValue = (
 
   const trimmed = rawValue.trim();
   return trimmed || undefined;
+};
+
+export const isTruthy = (value: string | undefined): boolean => {
+  if (!value) {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+};
+
+export const readPositiveIntegerEnv = (
+  envSource: EnvSource,
+  key: string,
+  fallback: number,
+  minValue: number = 1
+): number => {
+  const raw = readEnvValue(envSource, key);
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < minValue) {
+    return fallback;
+  }
+
+  return parsed;
 };
 
 export const sendJson = (
@@ -104,7 +150,10 @@ export const applyCorsHeaders = (
 
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Proxy-Auth'
+  );
   res.setHeader('Access-Control-Max-Age', '86400');
   appendVaryHeader(res, 'Origin');
 };
@@ -125,28 +174,217 @@ export const setStreamHeaders = (res: VercelLikeResponse): void => {
   res.setHeader('Connection', 'keep-alive');
 };
 
-export const readBody = async (req: VercelLikeRequest): Promise<string> => {
+export class RequestBodyTooLargeError extends Error {
+  readonly statusCode: number;
+
+  constructor(message: string = 'Request body is too large.') {
+    super(message);
+    this.name = 'RequestBodyTooLargeError';
+    this.statusCode = 413;
+  }
+}
+
+interface ReadBodyOptions {
+  maxBytes?: number;
+}
+
+const ensureBodySize = (rawBody: string, maxBytes: number): void => {
+  const bytes = Buffer.byteLength(rawBody, 'utf8');
+  if (bytes > maxBytes) {
+    throw new RequestBodyTooLargeError(
+      `Request body exceeds ${maxBytes} bytes limit.`
+    );
+  }
+};
+
+export const readBody = async (
+  req: VercelLikeRequest,
+  options: ReadBodyOptions = {}
+): Promise<string> => {
+  const maxBytes = options.maxBytes ?? DEFAULT_MAX_BODY_BYTES;
+
   if (typeof req.body === 'string') {
+    ensureBodySize(req.body, maxBytes);
     return req.body;
   }
 
   if (Buffer.isBuffer(req.body)) {
-    return req.body.toString('utf8');
+    const raw = req.body.toString('utf8');
+    ensureBodySize(raw, maxBytes);
+    return raw;
   }
 
   if (req.body && typeof req.body === 'object') {
-    return JSON.stringify(req.body);
+    const raw = JSON.stringify(req.body);
+    ensureBodySize(raw, maxBytes);
+    return raw;
+  }
+
+  const contentLengthHeader = req.headers['content-length'];
+  const contentLengthRaw = Array.isArray(contentLengthHeader)
+    ? contentLengthHeader[0]
+    : contentLengthHeader;
+  if (contentLengthRaw) {
+    const contentLength = Number.parseInt(contentLengthRaw, 10);
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      throw new RequestBodyTooLargeError(
+        `Request body exceeds ${maxBytes} bytes limit.`
+      );
+    }
   }
 
   let data = '';
+  let receivedBytes = 0;
   for await (const chunk of req) {
-    data += chunk.toString();
+    const chunkAsBuffer = Buffer.isBuffer(chunk)
+      ? chunk
+      : Buffer.from(chunk as string);
+    receivedBytes += chunkAsBuffer.length;
+    if (receivedBytes > maxBytes) {
+      throw new RequestBodyTooLargeError(
+        `Request body exceeds ${maxBytes} bytes limit.`
+      );
+    }
+
+    data += chunkAsBuffer.toString('utf8');
   }
 
   return data;
 };
 
-export const readJsonBody = async (req: VercelLikeRequest): Promise<unknown> => {
-  const rawBody = await readBody(req);
+export const readJsonBody = async (
+  req: VercelLikeRequest,
+  options: ReadBodyOptions = {}
+): Promise<unknown> => {
+  const rawBody = await readBody(req, options);
   return rawBody ? JSON.parse(rawBody) : {};
+};
+
+const readHeaderValue = (
+  req: VercelLikeRequest,
+  key: string
+): string | undefined => {
+  const raw = req.headers[key.toLowerCase()];
+  if (Array.isArray(raw)) {
+    return raw[0];
+  }
+
+  return typeof raw === 'string' ? raw : undefined;
+};
+
+const extractBearerToken = (authorizationHeader?: string): string | null => {
+  if (!authorizationHeader) {
+    return null;
+  }
+
+  const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    return null;
+  }
+
+  const token = match[1].trim();
+  return token || null;
+};
+
+export const isAuthorizedRequest = (
+  req: VercelLikeRequest,
+  envSource: EnvSource
+): boolean => {
+  const expectedToken = readEnvValue(envSource, 'API_PROXY_AUTH_TOKEN');
+  if (!expectedToken) {
+    return true;
+  }
+
+  const proxyAuthHeader = readHeaderValue(req, 'x-proxy-auth')?.trim();
+  if (proxyAuthHeader && proxyAuthHeader === expectedToken) {
+    return true;
+  }
+
+  const bearerToken = extractBearerToken(readHeaderValue(req, 'authorization'));
+  return bearerToken === expectedToken;
+};
+
+const getClientIp = (req: VercelLikeRequest): string => {
+  const forwarded = readHeaderValue(req, 'x-forwarded-for');
+  if (forwarded) {
+    const first = forwarded.split(',')[0]?.trim();
+    if (first) {
+      return first;
+    }
+  }
+
+  const realIp = readHeaderValue(req, 'x-real-ip');
+  if (realIp?.trim()) {
+    return realIp.trim();
+  }
+
+  return req.socket.remoteAddress || 'unknown';
+};
+
+const cleanupRateLimitStore = (now: number): void => {
+  if (rateLimitStore.size < 2048) {
+    return;
+  }
+
+  for (const [key, entry] of rateLimitStore.entries()) {
+    if (entry.resetAt <= now) {
+      rateLimitStore.delete(key);
+    }
+  }
+};
+
+export const checkRateLimit = (
+  req: VercelLikeRequest,
+  envSource: EnvSource,
+  options: RateLimitCheckOptions
+): {
+  allowed: boolean;
+  retryAfterSeconds: number;
+  limit: number;
+  remaining: number;
+} => {
+  const limit = readPositiveIntegerEnv(
+    envSource,
+    options.maxRequestsEnvKey || 'RATE_LIMIT_MAX_REQUESTS',
+    options.defaultMaxRequests || DEFAULT_RATE_LIMIT_MAX_REQUESTS
+  );
+  const windowMs = readPositiveIntegerEnv(
+    envSource,
+    options.windowMsEnvKey || 'RATE_LIMIT_WINDOW_MS',
+    options.defaultWindowMs || DEFAULT_RATE_LIMIT_WINDOW_MS
+  );
+
+  const now = Date.now();
+  cleanupRateLimitStore(now);
+
+  const clientIp = getClientIp(req);
+  const key = `${options.keyPrefix}:${clientIp}`;
+  const current = rateLimitStore.get(key);
+
+  if (!current || current.resetAt <= now) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+    return {
+      allowed: true,
+      retryAfterSeconds: Math.ceil(windowMs / 1000),
+      limit,
+      remaining: Math.max(limit - 1, 0),
+    };
+  }
+
+  if (current.count >= limit) {
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(Math.ceil((current.resetAt - now) / 1000), 1),
+      limit,
+      remaining: 0,
+    };
+  }
+
+  current.count += 1;
+  return {
+    allowed: true,
+    retryAfterSeconds: Math.max(Math.ceil((current.resetAt - now) / 1000), 1),
+    limit,
+    remaining: Math.max(limit - current.count, 0),
+  };
 };
