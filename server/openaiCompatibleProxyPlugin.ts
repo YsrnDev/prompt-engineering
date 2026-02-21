@@ -21,6 +21,7 @@ import {
 
 const GENERATE_ROUTE = '/api/generate';
 const DEFAULT_OPENAI_COMPATIBLE_MODEL = 'gpt-4o-mini';
+const DEFAULT_ALLOWED_CORS_ORIGINS = ['https://prompt-arcgent.vercel.app'];
 
 type EnvSource = Record<string, string | undefined>;
 
@@ -60,6 +61,56 @@ const sendJson = (
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(JSON.stringify(payload));
+};
+
+const appendVaryHeader = (res: ServerResponse, headerName: string): void => {
+  const existing = res.getHeader('Vary');
+  if (typeof existing === 'string') {
+    const existingValues = existing
+      .split(',')
+      .map((item) => item.trim().toLowerCase());
+    if (!existingValues.includes(headerName.toLowerCase())) {
+      res.setHeader('Vary', `${existing}, ${headerName}`);
+    }
+    return;
+  }
+
+  res.setHeader('Vary', headerName);
+};
+
+const getAllowedCorsOrigins = (envSource: EnvSource): Set<string> => {
+  const allowed = new Set(DEFAULT_ALLOWED_CORS_ORIGINS);
+  const rawExtraOrigins = readEnvValue(envSource, 'CORS_ALLOWED_ORIGINS');
+
+  if (!rawExtraOrigins) {
+    return allowed;
+  }
+
+  for (const value of rawExtraOrigins.split(',')) {
+    const origin = value.trim();
+    if (origin) {
+      allowed.add(origin);
+    }
+  }
+
+  return allowed;
+};
+
+const applyCorsHeaders = (
+  req: IncomingMessage,
+  res: ServerResponse,
+  allowedOrigins: Set<string>
+): void => {
+  const origin = req.headers.origin;
+  if (!origin || !allowedOrigins.has(origin)) {
+    return;
+  }
+
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  appendVaryHeader(res, 'Origin');
 };
 
 const sendNdjson = (res: ServerResponse, payload: Record<string, unknown>) => {
@@ -296,7 +347,17 @@ const registerGenerateMiddleware = (
   skillsIntegration: ReturnType<typeof createSkillsIntegration>,
   envSource: EnvSource
 ): void => {
+  const allowedCorsOrigins = getAllowedCorsOrigins(envSource);
+
   middlewares.use(GENERATE_ROUTE, (req, res) => {
+    applyCorsHeaders(req, res, allowedCorsOrigins);
+
+    if (req.method === 'OPTIONS') {
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+
     void handleGenerate(skillsIntegration, envSource, req, res).catch((error) => {
       if (!res.headersSent) {
         sendJson(res, 500, { error: toErrorMessage(error) });
@@ -311,9 +372,20 @@ const registerGenerateMiddleware = (
 
 const registerSkillsStatusMiddleware = (
   middlewares: Connect.Server,
-  skillsIntegration: ReturnType<typeof createSkillsIntegration>
+  skillsIntegration: ReturnType<typeof createSkillsIntegration>,
+  envSource: EnvSource
 ): void => {
+  const allowedCorsOrigins = getAllowedCorsOrigins(envSource);
+
   middlewares.use(SKILLS_STATUS_ROUTE, (req, res) => {
+    applyCorsHeaders(req, res, allowedCorsOrigins);
+
+    if (req.method === 'OPTIONS') {
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+
     if (req.method !== 'GET') {
       sendJson(res, 405, { error: 'Method Not Allowed. Use GET.' });
       return;
@@ -337,11 +409,11 @@ export const openAICompatibleProxyPlugin = (
   configureServer(server) {
     const skillsIntegration = createSkillsIntegration(envSource);
     registerGenerateMiddleware(server.middlewares, skillsIntegration, envSource);
-    registerSkillsStatusMiddleware(server.middlewares, skillsIntegration);
+    registerSkillsStatusMiddleware(server.middlewares, skillsIntegration, envSource);
   },
   configurePreviewServer(server) {
     const skillsIntegration = createSkillsIntegration(envSource);
     registerGenerateMiddleware(server.middlewares, skillsIntegration, envSource);
-    registerSkillsStatusMiddleware(server.middlewares, skillsIntegration);
+    registerSkillsStatusMiddleware(server.middlewares, skillsIntegration, envSource);
   },
 });
