@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `prompt-architect-shell-${CACHE_VERSION}`;
 const APP_SHELL_ASSETS = [
   '/',
@@ -57,13 +57,18 @@ const isCacheableRequest = (request) => {
   return true;
 };
 
-const putInCache = async (request, response) => {
+const putInCache = (request, response) => {
   if (!response || !response.ok) {
-    return;
+    return Promise.resolve();
   }
 
-  const cache = await caches.open(CACHE_NAME);
-  await cache.put(request, response.clone());
+  // Clone immediately before browser starts consuming the original stream.
+  const responseForCache = response.clone();
+
+  return caches
+    .open(CACHE_NAME)
+    .then((cache) => cache.put(request, responseForCache))
+    .catch(() => undefined);
 };
 
 self.addEventListener('fetch', (event) => {
@@ -77,7 +82,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          void putInCache(request, response);
+          event.waitUntil(putInCache(request, response));
           return response;
         })
         .catch(async () => {
@@ -94,7 +99,7 @@ self.addEventListener('fetch', (event) => {
     caches.match(request, { ignoreSearch: true }).then((cachedResponse) => {
       const networkResponsePromise = fetch(request)
         .then((networkResponse) => {
-          void putInCache(request, networkResponse);
+          event.waitUntil(putInCache(request, networkResponse));
           return networkResponse;
         })
         .catch(() => undefined);
