@@ -13,7 +13,7 @@
   },
   "include": [
     "types.ts",
-    "constants.tsx",
+    "constants.ts",
     "lib/**/*.ts",
     "services/chatApi.ts",
     "tests/**/*.ts"
