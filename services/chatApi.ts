@@ -1,5 +1,9 @@
 import type { Message } from '../types.js';
-import type { PromptGenerationMode, TargetAgent } from '../types.js';
+import type {
+  PromptGenerationMode,
+  PromptStabilityProfile,
+  TargetAgent,
+} from '../types.js';
 
 export type StreamEvent =
   | { type: 'chunk'; text: string }
@@ -10,6 +14,7 @@ export interface StreamAssistantResponseOptions {
   messages: Message[];
   mode?: PromptGenerationMode;
   targetAgent?: TargetAgent;
+  stabilityProfile?: PromptStabilityProfile;
   signal?: AbortSignal;
   onChunk: (text: string) => void;
 }
@@ -85,6 +90,7 @@ export const streamAssistantResponse = async ({
   messages,
   mode,
   targetAgent,
+  stabilityProfile,
   signal,
   onChunk,
 }: StreamAssistantResponseOptions): Promise<void> => {
@@ -93,7 +99,7 @@ export const streamAssistantResponse = async ({
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ messages, mode, targetAgent }),
+    body: JSON.stringify({ messages, mode, targetAgent, stabilityProfile }),
     signal,
   });
 

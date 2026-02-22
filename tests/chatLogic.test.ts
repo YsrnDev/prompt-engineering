@@ -78,7 +78,7 @@ test('parseGenerateRequestPayload validates generation mode when provided', () =
 test('parseGenerateRequestPayload validates target agent when provided', () => {
   const withTargetAgent = {
     messages: [makeMessage(1, 'user')],
-    targetAgent: 'claude-code',
+    targetAgent: 'chatgpt',
   };
 
   assert.deepEqual(
@@ -88,7 +88,26 @@ test('parseGenerateRequestPayload validates target agent when provided', () => {
   assert.equal(
     parseGenerateRequestPayload({
       messages: [makeMessage(1, 'user')],
-      targetAgent: 'chatgpt',
+      targetAgent: 'openai-chatgpt',
+    }),
+    null
+  );
+});
+
+test('parseGenerateRequestPayload validates stability profile when provided', () => {
+  const withStabilityProfile = {
+    messages: [makeMessage(1, 'user')],
+    stabilityProfile: 'strict',
+  };
+
+  assert.deepEqual(
+    parseGenerateRequestPayload(withStabilityProfile),
+    withStabilityProfile
+  );
+  assert.equal(
+    parseGenerateRequestPayload({
+      messages: [makeMessage(1, 'user')],
+      stabilityProfile: 'ultra-strict',
     }),
     null
   );

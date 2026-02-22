@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "tsc --noEmit",
     "test:build": "tsc -p tsconfig.test.json",
-    "test": "npm run test:build && node .test-dist/tests/chatLogic.test.js",
+    "test": "npm run test:build && node --test --experimental-test-isolation=none .test-dist/tests/*.test.js",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report"

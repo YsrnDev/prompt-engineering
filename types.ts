@@ -13,8 +13,14 @@ export const PROMPT_GENERATION_MODES = [
 
 export type PromptGenerationMode = (typeof PROMPT_GENERATION_MODES)[number];
 
+export const PROMPT_STABILITY_PROFILES = ['standard', 'strict'] as const;
+
+export type PromptStabilityProfile =
+  (typeof PROMPT_STABILITY_PROFILES)[number];
+
 export const TARGET_AGENTS = [
   'universal',
+  'chatgpt',
   'gemini',
   'claude-code',
   'kiro',

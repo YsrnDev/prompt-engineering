@@ -1,6 +1,7 @@
 import type {
   Message,
   PromptGenerationMode,
+  PromptStabilityProfile,
   TargetAgent,
 } from '../types.js';
 
@@ -8,6 +9,7 @@ export interface GenerateRequestPayload {
   messages: Message[];
   mode?: PromptGenerationMode;
   targetAgent?: TargetAgent;
+  stabilityProfile?: PromptStabilityProfile;
 }
 
 export const MAX_CONTEXT_MESSAGES = 20;
@@ -42,10 +44,16 @@ const isPromptGenerationMode = (
 
 const isTargetAgent = (value: unknown): value is TargetAgent =>
   value === 'universal' ||
+  value === 'chatgpt' ||
   value === 'gemini' ||
   value === 'claude-code' ||
   value === 'kiro' ||
   value === 'kimi';
+
+const isPromptStabilityProfile = (
+  value: unknown
+): value is PromptStabilityProfile =>
+  value === 'standard' || value === 'strict';
 
 const isMessage = (value: unknown): value is Message => {
   if (typeof value !== 'object' || value === null) {
@@ -84,6 +92,13 @@ export const parseGenerateRequestPayload = (
     return null;
   }
 
+  if (
+    payload.stabilityProfile !== undefined &&
+    !isPromptStabilityProfile(payload.stabilityProfile)
+  ) {
+    return null;
+  }
+
   const normalized: GenerateRequestPayload = { messages: payload.messages };
 
   if (payload.mode) {
@@ -92,6 +107,10 @@ export const parseGenerateRequestPayload = (
 
   if (payload.targetAgent) {
     normalized.targetAgent = payload.targetAgent;
+  }
+
+  if (payload.stabilityProfile) {
+    normalized.stabilityProfile = payload.stabilityProfile;
   }
 
   return normalized;

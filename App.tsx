@@ -868,14 +868,14 @@ const App: React.FC = () => {
           } ${status === AppStatus.GENERATING ? 'pr-11 sm:pr-12' : ''}`}
           rows={1}
         />
-        <div className="mt-1 flex flex-nowrap items-center gap-2 pr-1 sm:justify-end">
+        <div className="mt-1 flex flex-nowrap items-center gap-2 pr-1 max-[360px]:gap-1.5 max-[360px]:pr-0 sm:justify-end">
           <button
             type="button"
             aria-label={isListening ? 'Stop microphone input' : 'Start microphone input'}
             aria-pressed={isListening}
             disabled={!isMicSupported || status === AppStatus.GENERATING}
             onClick={handleToggleMicrophone}
-            className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-colors sm:h-8 sm:w-8 md:h-7 md:w-7 ${
+            className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-colors max-[360px]:h-9 max-[360px]:w-9 sm:h-8 sm:w-8 md:h-7 md:w-7 ${
               isListening
                 ? 'border-red-500/60 bg-red-500/10 text-red-200 hover:bg-red-500/20'
                 : 'border-neutral-700 bg-neutral-950/70 text-neutral-300 hover:border-neutral-600 hover:text-neutral-100'
@@ -889,7 +889,7 @@ const App: React.FC = () => {
             }
           >
             <svg
-              className="h-4 w-4 md:h-3.5 md:w-3.5"
+              className="h-4 w-4 max-[360px]:h-3.5 max-[360px]:w-3.5 md:h-3.5 md:w-3.5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -909,11 +909,11 @@ const App: React.FC = () => {
             aria-label="Surprise me"
             disabled={status === AppStatus.GENERATING}
             onClick={handleSurpriseMe}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-neutral-700 bg-neutral-950/70 text-neutral-300 transition-colors hover:border-amber-400/60 hover:text-amber-300 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8 sm:w-8 md:h-7 md:w-7"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-neutral-700 bg-neutral-950/70 text-neutral-300 transition-colors hover:border-amber-400/60 hover:text-amber-300 disabled:cursor-not-allowed disabled:opacity-50 max-[360px]:h-9 max-[360px]:w-9 sm:h-8 sm:w-8 md:h-7 md:w-7"
             title="Surprise me"
           >
             <svg
-              className="h-4 w-4 md:h-3.5 md:w-3.5"
+              className="h-4 w-4 max-[360px]:h-3.5 max-[360px]:w-3.5 md:h-3.5 md:w-3.5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -928,7 +928,7 @@ const App: React.FC = () => {
             </svg>
           </button>
 
-          <div className="ml-auto flex min-w-0 flex-nowrap items-center gap-2">
+          <div className="ml-auto flex min-w-0 flex-nowrap items-center gap-2 max-[360px]:gap-1">
           <div ref={agentMenuRef} className="relative shrink-0">
             <button
               type="button"
@@ -939,10 +939,10 @@ const App: React.FC = () => {
                 setIsAgentMenuOpen((prev) => !prev);
                 setIsModeMenuOpen(false);
               }}
-              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-neutral-700 bg-neutral-950/70 px-2 py-1 text-[10px] font-medium text-neutral-300"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-neutral-700 bg-neutral-950/70 px-2 py-1 text-[10px] font-medium text-neutral-300 max-[360px]:gap-1 max-[360px]:px-1.5 max-[360px]:text-[9px]"
             >
               <span className="text-neutral-400">Target</span>
-              <span className="text-amber-300">{activeTargetAgentLabel}</span>
+              <span className="text-amber-300 max-[360px]:text-[9px]">{activeTargetAgentLabel}</span>
               <svg
                 className={`h-3 w-3 text-neutral-400 transition-transform ${
                   isAgentMenuOpen ? 'rotate-180' : ''
@@ -1003,10 +1003,10 @@ const App: React.FC = () => {
                 setIsModeMenuOpen((prev) => !prev);
                 setIsAgentMenuOpen(false);
               }}
-              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-neutral-700 bg-neutral-950/70 px-2 py-1 text-[10px] font-medium text-neutral-300"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-neutral-700 bg-neutral-950/70 px-2 py-1 text-[10px] font-medium text-neutral-300 max-[360px]:gap-1 max-[360px]:px-1.5 max-[360px]:text-[9px]"
             >
               <span className="text-neutral-400">Mode</span>
-              <span className="text-amber-300">{activeModeLabel}</span>
+              <span className="text-amber-300 max-[360px]:text-[9px]">{activeModeLabel}</span>
               <svg
                 className={`h-3 w-3 text-neutral-400 transition-transform ${
                   isModeMenuOpen ? 'rotate-180' : ''

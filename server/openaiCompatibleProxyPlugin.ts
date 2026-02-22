@@ -1,28 +1,18 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connect, Plugin } from 'vite';
 import {
-  buildPromptGeneratorInstruction,
-  DEFAULT_TARGET_AGENT,
-  DEFAULT_PROMPT_MODE,
-} from '../constants.js';
-import {
   parseGenerateRequestPayload,
   trimMessagesForContext,
 } from '../lib/chatShared.js';
-import {
-  consumeSseEvents,
-  parseOpenAICompatibleSseEvent,
-  toOpenAICompatibleMessages,
-} from '../lib/openaiCompatible.js';
+import { generatePromptArtifact } from '../lib/promptGenerationEngine.js';
+import { splitIntoStreamChunks } from '../lib/promptStability.js';
 import {
   createSkillsIntegration,
   SKILLS_STATUS_ROUTE,
 } from './skillsIntegration.js';
 
 const GENERATE_ROUTE = '/api/generate';
-const DEFAULT_OPENAI_COMPATIBLE_MODEL = 'gpt-4o-mini';
 const DEFAULT_ALLOWED_CORS_ORIGINS = ['https://prompt-arcgent.vercel.app'];
-const DEFAULT_OPENAI_TIMEOUT_MS = 45_000;
 const DEFAULT_MAX_BODY_BYTES = 1_000_000;
 const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 30;
@@ -32,12 +22,6 @@ type EnvSource = Record<string, string | undefined>;
 interface RateLimitEntry {
   count: number;
   resetAt: number;
-}
-
-interface OpenAICompatibleConfig {
-  apiKey?: string;
-  model: string;
-  url: string;
 }
 
 class RequestBodyTooLargeError extends Error {
@@ -359,181 +343,6 @@ const checkRateLimit = (
   };
 };
 
-const getOpenAICompatibleConfig = (
-  envSource: EnvSource
-): OpenAICompatibleConfig => {
-  const directUrl = readEnvValue(envSource, 'OPENAI_COMPATIBLE_URL');
-  const baseUrl = readEnvValue(envSource, 'OPENAI_COMPATIBLE_BASE_URL');
-
-  if (!directUrl && !baseUrl) {
-    throw new Error(
-      'Missing OPENAI_COMPATIBLE_URL or OPENAI_COMPATIBLE_BASE_URL.'
-    );
-  }
-
-  const normalizedBase = baseUrl?.replace(/\/+$/, '');
-  const url =
-    directUrl ||
-    (normalizedBase?.endsWith('/v1/chat/completions')
-      ? normalizedBase
-      : `${normalizedBase}/v1/chat/completions`);
-
-  const apiKey =
-    readEnvValue(envSource, 'OPENAI_COMPATIBLE_API_KEY') ||
-    readEnvValue(envSource, 'OPENAI_API_KEY');
-
-  return {
-    apiKey,
-    model:
-      readEnvValue(envSource, 'OPENAI_COMPATIBLE_MODEL') ||
-      readEnvValue(envSource, 'OPENAI_MODEL') ||
-      DEFAULT_OPENAI_COMPATIBLE_MODEL,
-    url,
-  };
-};
-
-const readErrorResponse = async (response: Response): Promise<string> => {
-  try {
-    const payload = (await response.json()) as {
-      error?: { message?: unknown } | string;
-      message?: unknown;
-    };
-
-    if (typeof payload.error === 'string' && payload.error.trim()) {
-      return payload.error;
-    }
-
-    if (
-      payload.error &&
-      typeof payload.error === 'object' &&
-      typeof payload.error.message === 'string' &&
-      payload.error.message.trim()
-    ) {
-      return payload.error.message;
-    }
-
-    if (typeof payload.message === 'string' && payload.message.trim()) {
-      return payload.message;
-    }
-  } catch {
-    // Fall through to generic message.
-  }
-
-  return `Request failed with status ${response.status}.`;
-};
-
-const streamFromOpenAICompatible = async (
-  envSource: EnvSource,
-  contextMessages: ReturnType<typeof trimMessagesForContext>,
-  systemInstruction: string,
-  res: ServerResponse
-): Promise<void> => {
-  const config = getOpenAICompatibleConfig(envSource);
-  const timeoutMs = readPositiveIntegerEnv(
-    envSource,
-    'OPENAI_COMPATIBLE_TIMEOUT_MS',
-    DEFAULT_OPENAI_TIMEOUT_MS
-  );
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Accept: 'text/event-stream',
-  };
-
-  if (config.apiKey) {
-    headers.Authorization = `Bearer ${config.apiKey}`;
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  let response: Response;
-  try {
-    response = await fetch(config.url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: config.model,
-        stream: true,
-        temperature: 0.7,
-        messages: toOpenAICompatibleMessages(
-          contextMessages,
-          systemInstruction
-        ),
-      }),
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if ((error as { name?: string })?.name === 'AbortError') {
-      throw new Error(`Upstream request timed out after ${timeoutMs}ms.`);
-    }
-
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  if (!response.ok) {
-    throw new Error(await readErrorResponse(response));
-  }
-
-  if (!response.body) {
-    throw new Error('No response stream returned by OpenAI-compatible provider.');
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let doneSent = false;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    buffer += decoder.decode(value, { stream: true });
-    buffer = buffer.replace(/\r\n/g, '\n');
-
-    const consumed = consumeSseEvents(buffer);
-    buffer = consumed.rest;
-
-    for (const rawEvent of consumed.events) {
-      const parsed = parseOpenAICompatibleSseEvent(rawEvent);
-      if (!parsed) {
-        continue;
-      }
-
-      if (parsed.type === 'chunk') {
-        sendNdjson(res, { type: 'chunk', text: parsed.text });
-        continue;
-      }
-
-      if (parsed.type === 'error') {
-        throw new Error(parsed.message);
-      }
-
-      if (parsed.type === 'done') {
-        doneSent = true;
-      }
-    }
-  }
-
-  if (!doneSent && buffer.trim()) {
-    const parsed = parseOpenAICompatibleSseEvent(buffer.trim());
-    if (parsed?.type === 'chunk') {
-      sendNdjson(res, { type: 'chunk', text: parsed.text });
-    }
-
-    if (parsed?.type === 'error') {
-      throw new Error(parsed.message);
-    }
-  }
-
-  sendNdjson(res, { type: 'done' });
-  res.end();
-};
-
 const handleGenerate = async (
   skillsIntegration: ReturnType<typeof createSkillsIntegration>,
   envSource: EnvSource,
@@ -573,25 +382,37 @@ const handleGenerate = async (
   }
 
   const contextMessages = trimMessagesForContext(payload.messages);
-  const mode = payload.mode ?? DEFAULT_PROMPT_MODE;
-  const targetAgent = payload.targetAgent ?? DEFAULT_TARGET_AGENT;
   const skillInstruction =
-    (await skillsIntegration.buildInstructionForRequest(contextMessages)) || '';
-  const systemInstruction = [
-    buildPromptGeneratorInstruction(mode, targetAgent),
-    skillInstruction,
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+    (await skillsIntegration.buildInstructionForRequest(contextMessages, {
+      targetAgent: payload.targetAgent,
+      mode: payload.mode,
+      stabilityProfile: payload.stabilityProfile,
+    })) || '';
+
   setStreamHeaders(res);
 
   try {
-    await streamFromOpenAICompatible(
+    const result = await generatePromptArtifact({
       envSource,
+      payload,
       contextMessages,
-      systemInstruction,
-      res
-    );
+      skillInstruction,
+    });
+
+    for (const chunk of splitIntoStreamChunks(result.output)) {
+      sendNdjson(res, { type: 'chunk', text: chunk });
+    }
+
+    if (result.repaired) {
+      sendNdjson(res, {
+        type: 'meta',
+        event: 'auto_repair_applied',
+        stabilityProfile: result.stabilityProfile,
+      });
+    }
+
+    sendNdjson(res, { type: 'done' });
+    res.end();
   } catch (error) {
     sendNdjson(res, { type: 'error', message: toErrorMessage(error) });
     res.end();

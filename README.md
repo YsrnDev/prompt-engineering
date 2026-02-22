@@ -6,7 +6,10 @@ Prompt generator berbasis React + Vite untuk mengubah instruksi sederhana menjad
 
 - OpenAI-compatible API only (melalui proxy server lokal `/api/generate`).
 - Mode generasi prompt: `Simple`, `Advanced`, `Expert`.
-- Target agent profile: `Universal`, `Gemini`, `Claude Code`, `Kiro`, `Kimi`.
+- Target agent profile: `Universal`, `ChatGPT`, `Gemini`, `Claude Code`, `Kiro`, `Kimi`.
+- Output stabil lintas model dengan kontrak prompt wajib (`Role`, `Objective`, `Context`, `Constraints`, `Output Format`, `Quality Criteria`, `Failure Handling`).
+- Normalisasi output + validasi server-side + auto-repair 1x saat format tidak valid.
+- Retry transient error provider (network/fetch timeout) secara otomatis.
 - Skills integration (opsional) dari `skills.sh`.
 - UI chat responsif mobile/desktop.
 - PWA support (installable di Android pada mode production + HTTPS).
@@ -53,6 +56,12 @@ VITE_ENABLE_SIDEBAR=false
 SKILLS_SH_DISABLE=false
 SKILLS_SH_PROMPT_ENGINEERING_PATTERN_REF=prompt-engineering-patterns
 SKILLS_SH_UI_UX_PRO_MAX_REF=ui-ux-pro-max-skill
+SKILLS_SH_REQUIREMENTS_CLARIFIER_REF=requirements-clarifier
+SKILLS_SH_PROMPT_CONTRACT_ENFORCER_REF=prompt-contract-enforcer
+SKILLS_SH_QUALITY_RUBRIC_SCORER_REF=quality-rubric-scorer
+SKILLS_SH_MODEL_ADAPTER_PACK_REF=model-adapter-pack
+SKILLS_SH_DOMAIN_PACK_REF=domain-pack
+SKILLS_SH_ANTI_HALLUCINATION_GUARD_REF=anti-hallucination-guard
 
 # Opsional security hardening backend
 # Jika diisi, client harus kirim token via header:
@@ -65,6 +74,17 @@ GENERATE_MAX_BODY_BYTES=1000000
 
 # Timeout request ke provider OpenAI-compatible (ms)
 OPENAI_COMPATIBLE_TIMEOUT_MS=45000
+OPENAI_COMPATIBLE_TEMPERATURE=
+OPENAI_COMPATIBLE_MAX_RETRIES=1
+OPENAI_COMPATIBLE_RETRY_BASE_DELAY_MS=350
+
+# Stabilitas lintas model
+# standard | strict (default: standard)
+PROMPT_STABILITY_PROFILE=standard
+# Alias cepat (jika true, paksa strict walau PROMPT_STABILITY_PROFILE tidak diisi)
+PROMPT_FORCE_STRICT_MODE=false
+# Disable auto-repair format (default: false)
+PROMPT_AUTO_REPAIR_DISABLE=false
 
 # Rate limit /api/generate
 GENERATE_RATE_LIMIT_MAX_REQUESTS=30
@@ -92,6 +112,7 @@ npm run dev
 
 - `POST /api/generate`
   - Proxy streaming ke OpenAI-compatible endpoint.
+  - Menerapkan normalisasi, validasi kontrak, dan auto-repair output sebelum dikirim ke client.
 - `GET /api/skills-status`
   - Cek status skill yang berhasil dimuat (tanpa detail source/error kecuali `SKILLS_STATUS_INCLUDE_DETAILS=true`).
 

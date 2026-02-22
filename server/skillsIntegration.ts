@@ -1,7 +1,12 @@
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { Message } from '../types.js';
+import type {
+  Message,
+  PromptGenerationMode,
+  PromptStabilityProfile,
+  TargetAgent,
+} from '../types.js';
 
 type EnvSource = Record<string, string | undefined>;
 
@@ -20,7 +25,8 @@ interface SkillDefinition {
   name: string;
   envRefKey: string;
   defaultRefs: string[];
-  when: 'always' | 'ui-ux';
+  when: 'always' | 'ui-ux' | 'domain';
+  fallbackInstruction?: string;
 }
 
 interface SkillCache {
@@ -43,16 +49,116 @@ const SKILL_DEFINITIONS: SkillDefinition[] = [
     when: 'always',
   },
   {
+    id: 'requirements-clarifier',
+    name: 'Requirements Clarifier',
+    envRefKey: 'SKILLS_SH_REQUIREMENTS_CLARIFIER_REF',
+    defaultRefs: ['requirements-clarifier'],
+    when: 'always',
+    fallbackInstruction: `REQUIREMENTS CLARIFIER:
+- Infer missing requirements from user input and make them explicit as assumptions.
+- If key data is missing, add "Asumsi yang Digunakan" (max 7 points) before solution content.
+- Convert vague constraints into measurable constraints (scope, quality bar, format, limits).
+- Always specify audience, intent, output format, and acceptance criteria.
+- Keep assumptions realistic and non-speculative.`,
+  },
+  {
+    id: 'prompt-contract-enforcer',
+    name: 'Prompt Contract Enforcer',
+    envRefKey: 'SKILLS_SH_PROMPT_CONTRACT_ENFORCER_REF',
+    defaultRefs: ['prompt-contract-enforcer'],
+    when: 'always',
+    fallbackInstruction: `PROMPT CONTRACT ENFORCER:
+- Enforce exact contract structure and order:
+  1) Role
+  2) Objective
+  3) Context
+  4) Constraints
+  5) Output Format
+  6) Quality Criteria
+  7) Failure Handling
+- Do not omit any contract item.
+- Prefer deterministic, copy-paste-ready formatting.`,
+  },
+  {
+    id: 'quality-rubric-scorer',
+    name: 'Quality Rubric Scorer',
+    envRefKey: 'SKILLS_SH_QUALITY_RUBRIC_SCORER_REF',
+    defaultRefs: ['quality-rubric-scorer'],
+    when: 'always',
+    fallbackInstruction: `QUALITY RUBRIC SCORER:
+- Internally score draft prompt on: clarity, specificity, feasibility, portability, safety.
+- If any category < 4/5, revise once before final output.
+- Keep scoring internal; return only improved final artifact.
+- Prioritize reliability and low ambiguity over style.`,
+  },
+  {
+    id: 'model-adapter-pack',
+    name: 'Model Adapter Pack',
+    envRefKey: 'SKILLS_SH_MODEL_ADAPTER_PACK_REF',
+    defaultRefs: ['model-adapter-pack'],
+    when: 'always',
+    fallbackInstruction: `MODEL ADAPTER PACK:
+- Tune adapter for target model: {{TARGET_AGENT}}.
+- Generation mode: {{MODE}}.
+- Stability profile: {{STABILITY_PROFILE}}.
+- Keep core prompt provider-neutral, and place provider-specific tuning only inside adapter guidance.
+- Avoid undocumented provider-specific parameters.`,
+  },
+  {
+    id: 'anti-hallucination-guard',
+    name: 'Anti Hallucination Guard',
+    envRefKey: 'SKILLS_SH_ANTI_HALLUCINATION_GUARD_REF',
+    defaultRefs: ['anti-hallucination-guard'],
+    when: 'always',
+    fallbackInstruction: `ANTI-HALLUCINATION GUARD:
+- Do not fabricate facts, metrics, legal claims, or certifications.
+- If unverifiable data is needed, mark as "Perlu Verifikasi".
+- Add explicit boundary conditions and data-needed notes when required.
+- Avoid absolute guarantees; prefer evidence-based wording.`,
+  },
+  {
     id: 'ui-ux-pro-max',
     name: 'UI UX Pro Max',
     envRefKey: 'SKILLS_SH_UI_UX_PRO_MAX_REF',
     defaultRefs: ['ui-ux-pro-max', 'ui-ux-pro-max-skill'],
     when: 'ui-ux',
   },
+  {
+    id: 'domain-pack',
+    name: 'Domain Prompt Pack',
+    envRefKey: 'SKILLS_SH_DOMAIN_PACK_REF',
+    defaultRefs: ['domain-pack', 'landing-page-conversion', 'copywriting-id', 'seo-content'],
+    when: 'domain',
+    fallbackInstruction: `DOMAIN PROMPT PACK:
+- For product, landing page, or growth-oriented requests, include domain checklist:
+  - user journey stages
+  - section goals
+  - conversion CTA strategy
+  - trust/social proof elements
+  - SEO-friendly structure
+- Keep domain guidance contextual; do not force irrelevant sections.`,
+  },
 ];
 
 const UI_UX_INTENT_REGEX =
   /\b(landing page|landingpage|ui|ux|design|desain|website|web app|homepage|hero|cta|layout|wireframe|mockup|responsive|responsif)\b/i;
+const DOMAIN_INTENT_REGEX =
+  /\b(landing page|donasi|donation|saas|startup|fintech|ecommerce|edtech|seo|copywriting|campaign|conversion|homepage|product launch)\b/i;
+
+const TARGET_AGENT_LABELS: Record<TargetAgent, string> = {
+  universal: 'Universal',
+  chatgpt: 'ChatGPT',
+  gemini: 'Gemini',
+  'claude-code': 'Claude Code',
+  kiro: 'Kiro',
+  kimi: 'Kimi',
+};
+
+const MODE_LABELS: Record<PromptGenerationMode, string> = {
+  simple: 'Simple',
+  advanced: 'Advanced',
+  expert: 'Expert',
+};
 
 const readEnvValue = (envSource: EnvSource, key: string): string | undefined => {
   const rawValue = envSource[key] ?? process.env[key];
@@ -311,6 +417,30 @@ const getLastUserMessageContent = (messages: Message[]): string => {
   return '';
 };
 
+interface BuildInstructionOptions {
+  targetAgent?: TargetAgent;
+  mode?: PromptGenerationMode;
+  stabilityProfile?: PromptStabilityProfile;
+}
+
+const interpolateSkillInstruction = (
+  instruction: string,
+  options: BuildInstructionOptions
+): string => {
+  const targetAgent = options.targetAgent
+    ? TARGET_AGENT_LABELS[options.targetAgent]
+    : TARGET_AGENT_LABELS.universal;
+  const mode = options.mode ? MODE_LABELS[options.mode] : MODE_LABELS.advanced;
+  const stabilityProfile = options.stabilityProfile === 'strict'
+    ? 'Strict'
+    : 'Standard';
+
+  return instruction
+    .replace(/\{\{TARGET_AGENT\}\}/g, targetAgent)
+    .replace(/\{\{MODE\}\}/g, mode)
+    .replace(/\{\{STABILITY_PROFILE\}\}/g, stabilityProfile);
+};
+
 export class SkillsIntegration {
   private readonly envSource: EnvSource;
   private cache: SkillCache | null = null;
@@ -359,6 +489,21 @@ export class SkillsIntegration {
           name: definition.name,
           loaded: true,
           source: resolved.source,
+          bytes: Buffer.byteLength(instruction, 'utf8'),
+          updatedAt: new Date().toISOString(),
+        },
+        instruction,
+      };
+    }
+
+    if (definition.fallbackInstruction) {
+      const instruction = clampSkillContent(definition.fallbackInstruction.trim());
+      return {
+        status: {
+          id: definition.id,
+          name: definition.name,
+          loaded: true,
+          source: `builtin:${definition.id}`,
           bytes: Buffer.byteLength(instruction, 'utf8'),
           updatedAt: new Date().toISOString(),
         },
@@ -439,10 +584,14 @@ export class SkillsIntegration {
     };
   }
 
-  async buildInstructionForRequest(messages: Message[]): Promise<string> {
+  async buildInstructionForRequest(
+    messages: Message[],
+    options: BuildInstructionOptions = {}
+  ): Promise<string> {
     const cache = await this.getCache();
     const latestUserContent = getLastUserMessageContent(messages);
     const hasUiUxIntent = UI_UX_INTENT_REGEX.test(latestUserContent);
+    const hasDomainIntent = DOMAIN_INTENT_REGEX.test(latestUserContent);
     const blocks: string[] = [];
 
     for (const definition of SKILL_DEFINITIONS) {
@@ -455,7 +604,13 @@ export class SkillsIntegration {
         continue;
       }
 
-      blocks.push(`[Skill: ${definition.name}]\n${instruction}`);
+      if (definition.when === 'domain' && !hasDomainIntent) {
+        continue;
+      }
+
+      blocks.push(
+        `[Skill: ${definition.name}]\n${interpolateSkillInstruction(instruction, options)}`
+      );
     }
 
     if (blocks.length === 0) {

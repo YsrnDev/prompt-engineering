@@ -3,6 +3,7 @@ import {
   AppStatus,
   type Message,
   type PromptGenerationMode,
+  type PromptStabilityProfile,
   type TargetAgent,
 } from '../types.js';
 import {
@@ -17,7 +18,8 @@ interface UsePromptChatResult {
   sendMessage: (
     content: string,
     mode?: PromptGenerationMode,
-    targetAgent?: TargetAgent
+    targetAgent?: TargetAgent,
+    stabilityProfile?: PromptStabilityProfile
   ) => Promise<boolean>;
   cancelGeneration: () => string | null;
   dismissError: () => void;
@@ -74,7 +76,8 @@ export const usePromptChat = (): UsePromptChatResult => {
     async (
       rawContent: string,
       mode: PromptGenerationMode = 'advanced',
-      targetAgent: TargetAgent = 'universal'
+      targetAgent: TargetAgent = 'universal',
+      stabilityProfile?: PromptStabilityProfile
     ): Promise<boolean> => {
       const content = rawContent.trim();
       if (!content || status === AppStatus.GENERATING) {
@@ -116,6 +119,7 @@ export const usePromptChat = (): UsePromptChatResult => {
           messages: contextMessages,
           mode,
           targetAgent,
+          stabilityProfile,
           signal: controller.signal,
           onChunk: (chunk) => {
             fullContent += chunk;

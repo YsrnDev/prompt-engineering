@@ -1,10 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM"],
     "types": ["node"],
+    "jsx": "react-jsx",
     "rootDir": ".",
     "outDir": ".test-dist",
     "noEmit": false,
@@ -12,7 +13,8 @@
   },
   "include": [
     "types.ts",
-    "lib/chatShared.ts",
+    "constants.tsx",
+    "lib/**/*.ts",
     "services/chatApi.ts",
     "tests/**/*.ts"
   ],

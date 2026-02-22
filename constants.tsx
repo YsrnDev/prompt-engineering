@@ -1,6 +1,7 @@
 import {
   PromptPattern,
   type PromptGenerationMode,
+  type PromptStabilityProfile,
   type TargetAgent,
 } from './types';
 
@@ -78,6 +79,8 @@ RESPONSE GUIDELINES:
 
 export const DEFAULT_PROMPT_MODE: PromptGenerationMode = 'advanced';
 export const DEFAULT_TARGET_AGENT: TargetAgent = 'universal';
+export const DEFAULT_PROMPT_STABILITY_PROFILE: PromptStabilityProfile =
+  'standard';
 
 export const PROMPT_MODE_OPTIONS: Array<{
   value: PromptGenerationMode;
@@ -93,25 +96,34 @@ export const TARGET_AGENT_OPTIONS: Array<{
   label: string;
 }> = [
   { value: 'universal', label: 'Universal' },
+  { value: 'chatgpt', label: 'ChatGPT' },
   { value: 'gemini', label: 'Gemini' },
   { value: 'claude-code', label: 'Claude Code' },
   { value: 'kiro', label: 'Kiro' },
   { value: 'kimi', label: 'Kimi' },
 ];
 
+export const PROMPT_STABILITY_PROFILE_OPTIONS: Array<{
+  value: PromptStabilityProfile;
+  label: string;
+}> = [
+  { value: 'standard', label: 'Standard' },
+  { value: 'strict', label: 'Strict' },
+];
+
 const MODE_INSTRUCTION_SUFFIX: Record<PromptGenerationMode, string> = {
   simple: `MODE: SIMPLE
-- Produce concise, practical prompts for quick use.
-- Keep explanations short and avoid deep technical jargon.
-- Provide only essential prompt scaffolding.`,
+- Keep output compact and directly actionable.
+- Minimize verbosity while preserving mandatory structure.
+- Prefer deterministic, concrete wording over creativity.`,
   advanced: `MODE: ADVANCED
-- Produce balanced prompts with structure + rationale.
-- Include relevant pattern choices and moderate optimization detail.
-- Keep output clear for daily professional use.`,
+- Produce balanced depth with explicit constraints and quality checks.
+- Prioritize clarity, transferability, and low ambiguity.
+- Maintain consistent output shape for production usage.`,
   expert: `MODE: EXPERT
-- Produce highly optimized prompts with strict constraints and evaluation criteria.
-- Include advanced techniques (role layering, delimiters, few-shot scaffolding, risk controls).
-- Add rigorous optimization notes suitable for power users.`,
+- Enforce strict constraints, evaluation rubric, and failure handling.
+- Use advanced scaffolding only when it improves reliability.
+- Keep results deterministic and reusable across model providers.`,
 };
 
 export const buildSystemInstructionForMode = (
@@ -121,34 +133,59 @@ export const buildSystemInstructionForMode = (
 const TARGET_AGENT_ADAPTER: Record<TargetAgent, string> = {
   universal: `TARGET AGENT PROFILE: UNIVERSAL
 - Keep syntax provider-neutral and portable.
-- Avoid platform-specific parameters and unsupported keywords.
-- Use plain sections and explicit constraints only.`,
+- Avoid provider-only keywords, hidden assumptions, or undocumented params.
+- Use explicit section labels, measurable constraints, and clear output contract.`,
+  chatgpt: `TARGET AGENT PROFILE: CHATGPT
+- Use concise, direct instructions with explicit success criteria.
+- Prefer deterministic formatting and clear section delimiters.
+- Include constraints and fallback handling to reduce ambiguity.`,
   gemini: `TARGET AGENT PROFILE: GEMINI
-- Write concise, direct instructions with explicit task boundaries.
-- Prefer markdown sections and clear success criteria.
-- Keep context chunks structured and easy to scan.`,
+- Use concise, direct directives with explicit boundaries.
+- Keep markdown sections compact and scannable.
+- Add explicit success criteria and "do not" constraints.`,
   'claude-code': `TARGET AGENT PROFILE: CLAUDE CODE
-- Prioritize implementation realism and deterministic coding constraints.
-- Require explicit files, commands, and validation steps when coding is requested.
-- Push for defensive assumptions and edge-case handling.`,
+- Favor implementation realism and deterministic execution.
+- Require explicit files/paths/commands only when coding is requested.
+- Include validation steps, rollback strategy, and edge-case handling.`,
   kiro: `TARGET AGENT PROFILE: KIRO
-- Use clear goal decomposition and workflow-first directives.
-- Prefer concise staged instructions and concrete deliverable checklists.
-- Keep outputs optimization-focused and execution-ready.`,
+- Decompose goals into small staged workflows.
+- Use concise, operational checklists with acceptance criteria.
+- Keep directives execution-ready and low ambiguity.`,
   kimi: `TARGET AGENT PROFILE: KIMI
-- Favor high-context reasoning prompts with explicit role + objective framing.
-- Keep prompt language crisp, with step-by-step directives for reliability.
-- Add strict output formatting and evaluation checkpoints.`,
+- Favor explicit role/objective framing with high-context guidance.
+- Use crisp stepwise directives and deterministic formatting.
+- Include evaluation checkpoints and failure fallback behavior.`,
 };
 
 const PROMPT_CONTRACT_TEMPLATE = `PROMPT CONTRACT (must be enforced in generated prompt):
-1) Role
-2) Objective
-3) Context
-4) Constraints
-5) Output Format
-6) Quality Criteria
-7) Failure Handling`;
+Role:
+Objective:
+Context:
+Constraints:
+Output Format:
+Quality Criteria:
+Failure Handling:`;
+
+export const REQUIRED_PROMPT_CONTRACT_ITEMS = [
+  'Role',
+  'Objective',
+  'Context',
+  'Constraints',
+  'Output Format',
+  'Quality Criteria',
+  'Failure Handling',
+] as const;
+
+const STABILITY_STANDARD_SUFFIX = `STABILITY PROFILE: STANDARD
+- Keep response quality consistent across providers.
+- Preserve required structure while allowing light stylistic variance.
+- Prefer concise, deterministic language over expressive style.`;
+
+const STABILITY_STRICT_SUFFIX = `STABILITY PROFILE: STRICT
+- Format stability takes priority over creativity.
+- Use exactly the required section order and heading names.
+- Avoid optional sections and avoid speculative language.
+- Keep output deterministic and compact.`;
 
 const MULTI_PASS_TEMPLATE = `INTERNAL MULTI-PASS PIPELINE (do internally before final answer):
 Pass 1: Expand the user intent into a concrete target outcome.
@@ -160,27 +197,46 @@ Pass 5: Rewrite into one copy-ready, high-leverage prompt for the target agent.`
 const RESPONSE_FORMAT_TEMPLATE = `RESPONSE FORMAT (required):
 ## Final Prompt (Universal Core)
 \`\`\`text
-[full prompt]
+Role:
+Objective:
+Context:
+Constraints:
+Output Format:
+Quality Criteria:
+Failure Handling:
 \`\`\`
 ## Adapter Block (Target: [AgentName])
 \`\`\`text
-[target-agent-specific adjustments only]
+[target-agent-specific adaptation only; keep this short and deterministic]
 \`\`\`
 ## Why This Prompt Is Powerful
 - [short bullet]
 - [short bullet]
-- [short bullet]`;
+- [short bullet]
+## Prompt Contract Checklist
+- Role: Yes
+- Objective: Yes
+- Context: Yes
+- Constraints: Yes
+- Output Format: Yes
+- Quality Criteria: Yes
+- Failure Handling: Yes`;
 
 export const buildPromptGeneratorInstruction = (
   mode: PromptGenerationMode,
-  targetAgent: TargetAgent
+  targetAgent: TargetAgent,
+  options: { stabilityProfile?: PromptStabilityProfile } = {}
 ): string =>
   [
     buildSystemInstructionForMode(mode),
     'TASK TYPE: Prompt Generator. Convert the user request into a highly detailed, production-ready prompt for another AI agent.',
+    options.stabilityProfile === 'strict'
+      ? STABILITY_STRICT_SUFFIX
+      : STABILITY_STANDARD_SUFFIX,
     MULTI_PASS_TEMPLATE,
     PROMPT_CONTRACT_TEMPLATE,
     TARGET_AGENT_ADAPTER[targetAgent],
     RESPONSE_FORMAT_TEMPLATE,
     'IMPORTANT: Do not output implementation/code unless the user explicitly asks for code. Primary output is the prompt artifact.',
+    'IMPORTANT: Keep headings exactly as specified in RESPONSE FORMAT.',
   ].join('\n\n');
