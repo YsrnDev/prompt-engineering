@@ -49,6 +49,11 @@ export const SURPRISE_PROMPTS_PATTERN_FIXED: string[] = [
   'Example 1 Input: Build a startup landing page. Example 1 Output: A structured prompt with role, objective, constraints, and measurable success metrics. Example 2 Input: Build a portfolio page. Example 2 Output: A structured prompt with clear sections and conversion goals. Now transform this request into the same quality prompt: Build a donation platform landing page.',
   'Generate an initial prompt for creating a donation platform landing page, then self-critique it by listing three weaknesses and rewrite it into a stronger final prompt with better clarity, constraints, and output format.',
   'Use the context inside the following tags to generate a final prompt for an AI web builder. <context>Product is a donation platform. Audience is first-time and recurring donors. Main goals are trust, transparency, and conversion. Tone should be human, warm, and professional.</context>',
+  'Act as an expert prompt strategist. Build a prompt that asks an AI to produce a mobile-first landing page brief for a nonprofit campaign, including funnel stages, objection handling, and a clear CTA hierarchy.',
+  'Think step by step and transform a vague request into a deterministic prompt for creating a fintech onboarding page, with strict constraints for trust elements, legal wording, and accessibility.',
+  'Generate a first draft prompt for a B2B SaaS pricing page, then critique missing specificity, and rewrite into a high-precision prompt with measurable quality criteria and failure handling.',
+  'Use delimiters to structure this context and generate a final prompt artifact: <context>Goal: increase sign-ups for an education app. Audience: college students. Constraint: concise copy, transparent pricing, mobile-first UX.</context>',
+  'Using few-shot guidance, produce a prompt that converts a simple request into a complete implementation brief for a product launch landing page with SEO-ready sections and conversion metrics.',
 ];
 
 export const SURPRISE_PROMPTS_FREEFORM: string[] = [
@@ -57,6 +62,14 @@ export const SURPRISE_PROMPTS_FREEFORM: string[] = [
   'Build a high-converting prompt for a fintech app website that emphasizes security, speed, and trust, with section-by-section goals and clear microcopy guidance.',
   'Generate a structured prompt for creating a portfolio website for a UI designer, including project storytelling, case-study layout, and contact conversion strategy.',
   'Produce an expert-level prompt for an AI agent to craft a product launch landing page with launch narrative, feature breakdown, objection handling, and urgency-based call to action.',
+  'Craft a robust prompt to generate a conversion-focused donation campaign page with transparent fund allocation, trust badges, and a persuasive but ethical tone.',
+  'Create a prompt that asks an AI to produce a complete website brief for a telehealth platform, including compliance-aware messaging and user flow for first-time patients.',
+  'Write a powerful prompt for building a marketplace landing page, with clear seller and buyer value propositions, onboarding steps, and risk-reduction sections.',
+  'Generate a prompt that turns a rough app idea into a launch-ready homepage plan, including semantic section structure, copy goals, and success KPIs.',
+  'Produce a high-precision prompt for creating a crowdfunding platform hero and supporting sections, with strict constraints for accessibility, trust, and mobile readability.',
+  'Create a detailed prompt for a nonprofit impact report page, including storytelling arc, verified metrics placeholders, and stakeholder-specific call to actions.',
+  'Write a strong prompt for a personal finance app landing page with user pain points, feature proof, comparison section, and conversion-safe CTA placement.',
+  'Generate a prompt to design a recruitment platform homepage that balances employer trust, candidate clarity, and measurable conversion goals.',
 ];
 
 export const SYSTEM_INSTRUCTION = `You are "Prompt Architect AI", a world-class senior Prompt Engineer and LLM Optimization expert.

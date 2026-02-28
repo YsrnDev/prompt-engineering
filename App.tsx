@@ -27,6 +27,7 @@ import ChatWindow from './components/ChatWindow';
 import PatternGrid from './components/PatternGrid';
 import Header from './components/Header';
 import { usePromptChat } from './hooks/usePromptChat.js';
+import { requestSurprisePrompt } from './services/chatApi.js';
 
 type SpeechRecognitionAlternativeLike = {
   transcript: string;
@@ -145,6 +146,7 @@ const App: React.FC = () => {
   const dictatedBaseRef = useRef('');
   const [isMicSupported, setIsMicSupported] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isSurpriseLoading, setIsSurpriseLoading] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const [isScrollbarDragging, setIsScrollbarDragging] = useState(false);
   const [scrollbarVisibility, setScrollbarVisibility] = useState<
@@ -817,6 +819,39 @@ const App: React.FC = () => {
     composerRef.current?.focus();
   }, [isListening]);
 
+  const handleSurpriseMeSmart = useCallback(async () => {
+    if (status === AppStatus.GENERATING || isSurpriseLoading) {
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+    }
+
+    setIsSurpriseLoading(true);
+    try {
+      const payload = await requestSurprisePrompt({
+        context: input,
+      });
+
+      if (payload.prompt.trim()) {
+        setInput(payload.prompt);
+        setMicError(null);
+        setIsModeMenuOpen(false);
+        setIsAgentMenuOpen(false);
+        setIsMobileSidebarOpen(false);
+        composerRef.current?.focus();
+        return;
+      }
+    } catch {
+      // Fall back to curated pool when surprise endpoint fails.
+    } finally {
+      setIsSurpriseLoading(false);
+    }
+
+    handleSurpriseMe();
+  }, [handleSurpriseMe, input, isListening, isSurpriseLoading, status]);
+
   const canGenerate =
     input.trim().length > 0 && status !== AppStatus.GENERATING;
 
@@ -1006,13 +1041,18 @@ const App: React.FC = () => {
             <button
               type="button"
               aria-label="Surprise me"
-              disabled={status === AppStatus.GENERATING}
-              onClick={handleSurpriseMe}
+              disabled={status === AppStatus.GENERATING || isSurpriseLoading}
+              onClick={() => {
+                void handleSurpriseMeSmart();
+              }}
               className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-neutral-700 bg-neutral-950/70 text-neutral-300 transition-colors hover:border-amber-400/60 hover:text-amber-300 disabled:cursor-not-allowed disabled:opacity-50 max-[360px]:h-9 max-[360px]:w-9 sm:h-8 sm:w-8 md:h-7 md:w-7"
-              title="Surprise me"
+              title={isSurpriseLoading ? 'Generating surprise prompt...' : 'Surprise me'}
+              aria-busy={isSurpriseLoading}
             >
               <svg
-                className="h-4 w-4 max-[360px]:h-3.5 max-[360px]:w-3.5 md:h-3.5 md:w-3.5"
+                className={`h-4 w-4 max-[360px]:h-3.5 max-[360px]:w-3.5 md:h-3.5 md:w-3.5 ${
+                  isSurpriseLoading ? 'animate-spin' : ''
+                }`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

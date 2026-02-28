@@ -7,11 +7,16 @@ import {
 import { generatePromptArtifact } from '../lib/promptGenerationEngine.js';
 import { splitIntoStreamChunks } from '../lib/promptStability.js';
 import {
+  buildFallbackSurprisePrompt,
+  generateSurprisePrompt,
+} from '../lib/surprisePromptEngine.js';
+import {
   createSkillsIntegration,
   SKILLS_STATUS_ROUTE,
 } from './skillsIntegration.js';
 
 const GENERATE_ROUTE = '/api/generate';
+const SURPRISE_ROUTE = '/api/surprise';
 const DEFAULT_ALLOWED_CORS_ORIGINS = ['https://prompt-arcgent.vercel.app'];
 const DEFAULT_MAX_BODY_BYTES = 1_000_000;
 const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -467,6 +472,88 @@ const registerGenerateMiddleware = (
   });
 };
 
+const parseSurpriseContext = (value: unknown): string | undefined => {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const context = (value as { context?: unknown }).context;
+  if (typeof context !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = context.trim();
+  return trimmed || undefined;
+};
+
+const registerSurpriseMiddleware = (
+  middlewares: Connect.Server,
+  envSource: EnvSource
+): void => {
+  const allowedCorsOrigins = getAllowedCorsOrigins(envSource);
+
+  middlewares.use(SURPRISE_ROUTE, (req, res) => {
+    applyCorsHeaders(req, res, allowedCorsOrigins);
+
+    if (req.method === 'OPTIONS') {
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+
+    if (!isAuthorizedRequest(req, envSource)) {
+      sendJson(res, 401, { error: 'Unauthorized request.' });
+      return;
+    }
+
+    const rateLimit = checkRateLimit(req, envSource, {
+      keyPrefix: 'surprise',
+      maxRequestsEnvKey: 'SURPRISE_RATE_LIMIT_MAX_REQUESTS',
+      windowMsEnvKey: 'SURPRISE_RATE_LIMIT_WINDOW_MS',
+      defaultMaxRequests: 20,
+      defaultWindowMs: 60_000,
+    });
+    res.setHeader('X-RateLimit-Limit', String(rateLimit.limit));
+    res.setHeader('X-RateLimit-Remaining', String(rateLimit.remaining));
+    res.setHeader('Retry-After', String(rateLimit.retryAfterSeconds));
+    if (!rateLimit.allowed) {
+      sendJson(res, 429, { error: 'Rate limit exceeded. Please retry later.' });
+      return;
+    }
+
+    if (req.method !== 'POST') {
+      sendJson(res, 405, { error: 'Method Not Allowed. Use POST.' });
+      return;
+    }
+
+    void (async () => {
+      let body: unknown = {};
+      try {
+        const rawBody = await readBody(req, 20_000);
+        body = rawBody ? JSON.parse(rawBody) : {};
+      } catch {
+        sendJson(res, 400, { error: 'Invalid JSON body.' });
+        return;
+      }
+
+      try {
+        const prompt = await generateSurprisePrompt({
+          envSource,
+          context: parseSurpriseContext(body),
+        });
+        sendJson(res, 200, { prompt, source: 'ai' });
+      } catch (error) {
+        const context = parseSurpriseContext(body);
+        sendJson(res, 200, {
+          prompt: buildFallbackSurprisePrompt(context),
+          source: 'fallback',
+          warning: toErrorMessage(error),
+        });
+      }
+    })();
+  });
+};
+
 const registerSkillsStatusMiddleware = (
   middlewares: Connect.Server,
   skillsIntegration: ReturnType<typeof createSkillsIntegration>,
@@ -560,11 +647,13 @@ export const openAICompatibleProxyPlugin = (
   configureServer(server) {
     const skillsIntegration = createSkillsIntegration(envSource);
     registerGenerateMiddleware(server.middlewares, skillsIntegration, envSource);
+    registerSurpriseMiddleware(server.middlewares, envSource);
     registerSkillsStatusMiddleware(server.middlewares, skillsIntegration, envSource);
   },
   configurePreviewServer(server) {
     const skillsIntegration = createSkillsIntegration(envSource);
     registerGenerateMiddleware(server.middlewares, skillsIntegration, envSource);
+    registerSurpriseMiddleware(server.middlewares, envSource);
     registerSkillsStatusMiddleware(server.middlewares, skillsIntegration, envSource);
   },
 });

@@ -19,6 +19,11 @@ export interface StreamAssistantResponseOptions {
   onChunk: (text: string) => void;
 }
 
+interface SurprisePromptPayload {
+  prompt: string;
+  source?: 'ai' | 'fallback';
+}
+
 const DEFAULT_ERROR_MESSAGE = 'Request failed. Please try again.';
 
 const toErrorMessage = (value: unknown): string => {
@@ -84,6 +89,27 @@ const readErrorResponse = async (response: Response): Promise<string> => {
   }
 
   return `Request failed with status ${response.status}.`;
+};
+
+const parseSurprisePayload = (value: unknown): SurprisePromptPayload | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<SurprisePromptPayload>;
+  if (typeof candidate.prompt !== 'string') {
+    return null;
+  }
+
+  const prompt = candidate.prompt.trim();
+  if (!prompt) {
+    return null;
+  }
+
+  return {
+    prompt,
+    source: candidate.source,
+  };
 };
 
 export const streamAssistantResponse = async ({
@@ -152,4 +178,34 @@ export const streamAssistantResponse = async ({
       }
     }
   }
+};
+
+export const requestSurprisePrompt = async ({
+  context,
+  signal,
+}: {
+  context?: string;
+  signal?: AbortSignal;
+} = {}): Promise<SurprisePromptPayload> => {
+  const response = await fetch('/api/surprise', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      context: context?.trim() || undefined,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorResponse(response));
+  }
+
+  const payload = parseSurprisePayload(await response.json());
+  if (!payload) {
+    throw new Error('Invalid response from /api/surprise.');
+  }
+
+  return payload;
 };

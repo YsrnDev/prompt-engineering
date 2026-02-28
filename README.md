@@ -77,6 +77,9 @@ OPENAI_COMPATIBLE_TIMEOUT_MS=45000
 OPENAI_COMPATIBLE_TEMPERATURE=
 OPENAI_COMPATIBLE_MAX_RETRIES=1
 OPENAI_COMPATIBLE_RETRY_BASE_DELAY_MS=350
+SURPRISE_TEMPERATURE=0.95
+SURPRISE_TIMEOUT_MS=12000
+SURPRISE_MAX_RETRIES=0
 
 # Stabilitas lintas model
 # standard | strict (default: standard)
@@ -93,6 +96,10 @@ GENERATE_RATE_LIMIT_WINDOW_MS=60000
 # Rate limit /api/skills-status
 SKILLS_STATUS_RATE_LIMIT_MAX_REQUESTS=60
 SKILLS_STATUS_RATE_LIMIT_WINDOW_MS=60000
+
+# Rate limit /api/surprise
+SURPRISE_RATE_LIMIT_MAX_REQUESTS=20
+SURPRISE_RATE_LIMIT_WINDOW_MS=60000
 
 # Sembunyikan source/error skills dari endpoint publik (default aman: false)
 SKILLS_STATUS_INCLUDE_DETAILS=false
@@ -113,6 +120,9 @@ npm run dev
 - `POST /api/generate`
   - Proxy streaming ke OpenAI-compatible endpoint.
   - Menerapkan normalisasi, validasi kontrak, dan auto-repair output sebelum dikirim ke client.
+- `POST /api/surprise`
+  - Menghasilkan draft prompt baru langsung dari model OpenAI-compatible.
+  - Jika provider gagal, endpoint mengembalikan fallback prompt agar UX tetap mulus.
 - `GET /api/skills-status`
   - Cek status skill yang berhasil dimuat (tanpa detail source/error kecuali `SKILLS_STATUS_INCLUDE_DETAILS=true`).
 
