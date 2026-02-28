@@ -830,9 +830,7 @@ const App: React.FC = () => {
 
     setIsSurpriseLoading(true);
     try {
-      const payload = await requestSurprisePrompt({
-        context: input,
-      });
+      const payload = await requestSurprisePrompt();
 
       if (payload.prompt.trim()) {
         setInput(payload.prompt);
@@ -850,7 +848,7 @@ const App: React.FC = () => {
     }
 
     handleSurpriseMe();
-  }, [handleSurpriseMe, input, isListening, isSurpriseLoading, status]);
+  }, [handleSurpriseMe, isListening, isSurpriseLoading, status]);
 
   const canGenerate =
     input.trim().length > 0 && status !== AppStatus.GENERATING;
