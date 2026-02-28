@@ -817,6 +817,9 @@ const App: React.FC = () => {
     composerRef.current?.focus();
   }, [isListening]);
 
+  const canGenerate =
+    input.trim().length > 0 && status !== AppStatus.GENERATING;
+
   const composerElement = (
     <div className="relative">
       <div className="relative rounded-2xl border border-neutral-700 bg-neutral-900 p-1.5 transition-all duration-300 ease-in-out sm:p-2">
@@ -868,67 +871,8 @@ const App: React.FC = () => {
           } ${status === AppStatus.GENERATING ? 'pr-11 sm:pr-12' : ''}`}
           rows={1}
         />
-        <div className="mt-1 flex flex-nowrap items-center gap-2 pr-1 max-[360px]:gap-1.5 max-[360px]:pr-0 sm:justify-end">
-          <button
-            type="button"
-            aria-label={isListening ? 'Stop microphone input' : 'Start microphone input'}
-            aria-pressed={isListening}
-            disabled={!isMicSupported || status === AppStatus.GENERATING}
-            onClick={handleToggleMicrophone}
-            className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-colors max-[360px]:h-9 max-[360px]:w-9 sm:h-8 sm:w-8 md:h-7 md:w-7 ${
-              isListening
-                ? 'border-red-500/60 bg-red-500/10 text-red-200 hover:bg-red-500/20'
-                : 'border-neutral-700 bg-neutral-950/70 text-neutral-300 hover:border-neutral-600 hover:text-neutral-100'
-            } disabled:cursor-not-allowed disabled:opacity-50`}
-            title={
-              isMicSupported
-                ? isListening
-                  ? 'Stop voice input'
-                  : 'Start voice input'
-                : 'Voice input tidak didukung browser ini'
-            }
-          >
-            <svg
-              className="h-4 w-4 max-[360px]:h-3.5 max-[360px]:w-3.5 md:h-3.5 md:w-3.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 3a3 3 0 00-3 3v6a3 3 0 106 0V6a3 3 0 00-3-3zm-7 9a7 7 0 0014 0m-7 7v2m-4 0h8"
-              />
-            </svg>
-          </button>
-
-          <button
-            type="button"
-            aria-label="Surprise me"
-            disabled={status === AppStatus.GENERATING}
-            onClick={handleSurpriseMe}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-neutral-700 bg-neutral-950/70 text-neutral-300 transition-colors hover:border-amber-400/60 hover:text-amber-300 disabled:cursor-not-allowed disabled:opacity-50 max-[360px]:h-9 max-[360px]:w-9 sm:h-8 sm:w-8 md:h-7 md:w-7"
-            title="Surprise me"
-          >
-            <svg
-              className="h-4 w-4 max-[360px]:h-3.5 max-[360px]:w-3.5 md:h-3.5 md:w-3.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 3l1.5 3.5L14 8l-3.5 1.5L9 13l-1.5-3.5L4 8l3.5-1.5L9 3zm8 8l1 2.2L20 14l-2 0.8L17 17l-1-2.2L14 14l2-0.8L17 11zM6 15l0.9 2L9 18l-2.1 0.9L6 21l-0.9-2.1L3 18l2.1-1L6 15z"
-              />
-            </svg>
-          </button>
-
-          <div className="ml-auto flex min-w-0 flex-nowrap items-center gap-2 max-[360px]:gap-1">
+        <div className="mt-1 flex w-full items-center justify-between gap-2 pr-1 max-[360px]:gap-1.5 max-[360px]:pr-0">
+          <div className="flex min-w-0 flex-nowrap items-center gap-2 max-[360px]:gap-1">
           <div ref={agentMenuRef} className="relative shrink-0">
             <button
               type="button"
@@ -1057,6 +1001,92 @@ const App: React.FC = () => {
             )}
           </div>
 
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5 max-[360px]:gap-1">
+            <button
+              type="button"
+              aria-label="Surprise me"
+              disabled={status === AppStatus.GENERATING}
+              onClick={handleSurpriseMe}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-neutral-700 bg-neutral-950/70 text-neutral-300 transition-colors hover:border-amber-400/60 hover:text-amber-300 disabled:cursor-not-allowed disabled:opacity-50 max-[360px]:h-9 max-[360px]:w-9 sm:h-8 sm:w-8 md:h-7 md:w-7"
+              title="Surprise me"
+            >
+              <svg
+                className="h-4 w-4 max-[360px]:h-3.5 max-[360px]:w-3.5 md:h-3.5 md:w-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 3l1.5 3.5L14 8l-3.5 1.5L9 13l-1.5-3.5L4 8l3.5-1.5L9 3zm8 8l1 2.2L20 14l-2 0.8L17 17l-1-2.2L14 14l2-0.8L17 11zM6 15l0.9 2L9 18l-2.1 0.9L6 21l-0.9-2.1L3 18l2.1-1L6 15z"
+                />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              aria-label={isListening ? 'Stop microphone input' : 'Start microphone input'}
+              aria-pressed={isListening}
+              disabled={!isMicSupported || status === AppStatus.GENERATING}
+              onClick={handleToggleMicrophone}
+              className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-colors max-[360px]:h-9 max-[360px]:w-9 sm:h-8 sm:w-8 md:h-7 md:w-7 ${
+                isListening
+                  ? 'border-red-500/60 bg-red-500/10 text-red-200 hover:bg-red-500/20'
+                  : 'border-neutral-700 bg-neutral-950/70 text-neutral-300 hover:border-neutral-600 hover:text-neutral-100'
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+              title={
+                isMicSupported
+                  ? isListening
+                    ? 'Stop voice input'
+                    : 'Start voice input'
+                  : 'Voice input tidak didukung browser ini'
+              }
+            >
+              <svg
+                className="h-4 w-4 max-[360px]:h-3.5 max-[360px]:w-3.5 md:h-3.5 md:w-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 3a3 3 0 00-3 3v6a3 3 0 106 0V6a3 3 0 00-3-3zm-7 9a7 7 0 0014 0m-7 7v2m-4 0h8"
+                />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              aria-label="Generate prompt"
+              disabled={!canGenerate}
+              onClick={() => {
+                void handleSendMessage();
+              }}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-amber-500/45 bg-amber-500/15 text-amber-200 transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-50 max-[360px]:h-9 max-[360px]:w-9 sm:h-8 sm:w-8 md:h-7 md:w-7"
+              title="Generate"
+            >
+              <svg
+                className="h-4 w-4 max-[360px]:h-3.5 max-[360px]:w-3.5 md:h-3.5 md:w-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 12h12m0 0-4-4m4 4-4 4"
+                />
+              </svg>
+            </button>
           </div>
         </div>
 
