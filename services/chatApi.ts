@@ -25,6 +25,11 @@ interface SurprisePromptPayload {
 }
 
 const DEFAULT_ERROR_MESSAGE = 'Request failed. Please try again.';
+const TYPEWRITER_DIRECT_CHUNK_THRESHOLD = 90;
+const TYPEWRITER_MIN_DURATION_MS = 260;
+const TYPEWRITER_MAX_DURATION_MS = 1_200;
+const TYPEWRITER_MIN_DELAY_MS = 10;
+const TYPEWRITER_MAX_DELAY_MS = 36;
 
 const toErrorMessage = (value: unknown): string => {
   if (value instanceof Error && value.message.trim()) {
@@ -36,6 +41,98 @@ const toErrorMessage = (value: unknown): string => {
   }
 
   return DEFAULT_ERROR_MESSAGE;
+};
+
+const createAbortError = (): Error => {
+  const error = new Error('The operation was aborted.');
+  error.name = 'AbortError';
+  return error;
+};
+
+const waitWithAbort = async (
+  ms: number,
+  signal?: AbortSignal
+): Promise<void> => {
+  if (ms <= 0) {
+    return;
+  }
+
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const onAbort = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      signal?.removeEventListener('abort', onAbort);
+      reject(createAbortError());
+    };
+
+    timeoutId = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+};
+
+const splitChunkForTypewriter = (text: string): string[] => {
+  const byWords = text.split(/(\s+)/).filter((part) => part.length > 0);
+  if (byWords.length > 1) {
+    return byWords;
+  }
+
+  return text.split('');
+};
+
+const emitChunkWithTypewriterEffect = async ({
+  text,
+  signal,
+  onChunk,
+}: {
+  text: string;
+  signal?: AbortSignal;
+  onChunk: (text: string) => void;
+}): Promise<void> => {
+  if (!text) {
+    return;
+  }
+
+  if (text.length <= TYPEWRITER_DIRECT_CHUNK_THRESHOLD) {
+    onChunk(text);
+    return;
+  }
+
+  const segments = splitChunkForTypewriter(text);
+  if (segments.length <= 1) {
+    onChunk(text);
+    return;
+  }
+
+  const estimatedDurationMs = Math.round(text.length * 1.8);
+  const totalDurationMs = Math.min(
+    TYPEWRITER_MAX_DURATION_MS,
+    Math.max(TYPEWRITER_MIN_DURATION_MS, estimatedDurationMs)
+  );
+  const delayMs = Math.min(
+    TYPEWRITER_MAX_DELAY_MS,
+    Math.max(TYPEWRITER_MIN_DELAY_MS, Math.round(totalDurationMs / segments.length))
+  );
+
+  for (let index = 0; index < segments.length; index += 1) {
+    if (signal?.aborted) {
+      throw createAbortError();
+    }
+
+    onChunk(segments[index]);
+    if (index < segments.length - 1) {
+      await waitWithAbort(delayMs, signal);
+    }
+  }
 };
 
 const parseEvent = (line: string): StreamEvent | null => {
@@ -158,7 +255,11 @@ export const streamAssistantResponse = async ({
 
     for (const event of parseNdjsonEvents(segment)) {
       if (event.type === 'chunk') {
-        onChunk(event.text);
+        await emitChunkWithTypewriterEffect({
+          text: event.text,
+          signal,
+          onChunk,
+        });
       }
 
       if (event.type === 'error') {
@@ -170,7 +271,11 @@ export const streamAssistantResponse = async ({
   if (buffer.trim()) {
     for (const event of parseNdjsonEvents(buffer)) {
       if (event.type === 'chunk') {
-        onChunk(event.text);
+        await emitChunkWithTypewriterEffect({
+          text: event.text,
+          signal,
+          onChunk,
+        });
       }
 
       if (event.type === 'error') {
